@@ -2,6 +2,8 @@ extern crate js_sys;
 
 mod utils;
 
+use core::panic;
+
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
@@ -152,6 +154,8 @@ pub struct Board {
     cells: Vec<Vec<Cell>>,
     block: Block,
     pos: Coord,
+    score: u32,
+    level: u32,
 }
 
 impl Board {
@@ -163,6 +167,8 @@ impl Board {
             cells: vec![vec![Cell::Empty; cols]; rows],
             block: Block::next(),
             pos: Coord::new((cols / 2) as i32, 0),
+            score: 0,
+            level: 0,
         }
     }
 }
@@ -188,6 +194,25 @@ impl Board {
             let x = (coord.x + self.pos.x) as usize;
             let y = (coord.y + self.pos.y) as usize;
             self.cells[y][x] = Cell::Filled;
+        }
+
+        // Pop empty rows
+        self.cells.retain(|row| row.iter().any(|&cell| cell == Cell::Empty));
+        if self.cells.len() < self.rows {
+            // Create the new rows
+            let new_row_count = self.rows - self.cells.len();
+            let mut new_cells = vec![vec![Cell::Empty; self.cols]; new_row_count ];
+            new_cells.append(&mut self.cells);
+            self.cells = new_cells;
+
+            // Adjust score and level
+            self.score += match new_row_count {
+                1 => 100,
+                2 => 250,
+                3 => 500,
+                4 => 1000,
+                _ => panic!("How can you have any pudding if you don't eat yer meat!?")
+            };
         }
     }
 }
@@ -275,10 +300,7 @@ impl Game {
 impl Game {
     pub fn tick(&mut self) {
         let new_pos = Coord::new(self.board.pos.x, self.board.pos.y + 1);
-        if self
-            .board
-            .check_collision(new_pos.clone(), self.board.block.coords)
-        {
+        if self.board.check_collision(new_pos.clone(), self.board.block.coords) {
             self.board.fill_block();
             self.board.pos = Coord::new((self.board.cols / 2) as i32, 0);
             self.board.block = Block::next();
@@ -293,9 +315,7 @@ impl Game {
 impl Game {
     pub fn move_left(&mut self) {
         let new_pos = Coord::new(self.board.pos.x - 1, self.board.pos.y);
-        if !self
-            .board
-            .check_collision(new_pos.clone(), self.board.block.coords)
+        if !self.board.check_collision(new_pos.clone(), self.board.block.coords)
         {
             self.board.pos = new_pos;
             self.draw();
@@ -304,9 +324,7 @@ impl Game {
 
     pub fn move_right(&mut self) {
         let new_pos = Coord::new(self.board.pos.x + 1, self.board.pos.y);
-        if !self
-            .board
-            .check_collision(new_pos.clone(), self.board.block.coords)
+        if !self.board.check_collision(new_pos.clone(), self.board.block.coords)
         {
             self.board.pos = new_pos;
             self.draw();
@@ -315,9 +333,7 @@ impl Game {
 
     pub fn move_down(&mut self) {
         let new_pos = Coord::new(self.board.pos.x, self.board.pos.y + 1);
-        if !self
-            .board
-            .check_collision(new_pos.clone(), self.board.block.coords)
+        if !self.board.check_collision(new_pos.clone(), self.board.block.coords)
         {
             self.board.pos = new_pos;
             self.draw();
