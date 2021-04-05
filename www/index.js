@@ -22,14 +22,16 @@ const start = () => {
     requestAnimationFrame(mainLoop);
 
     function keyboardControls(event) {
-        if (event.keyCode === 65) {
+        if (event.keyCode === 37) {
             game.move_left();
-        } else if (event.keyCode === 87) {
+        } else if (event.keyCode === 32) {
             game.rotate();
-        } else if (event.keyCode === 68) {
+        } else if (event.keyCode === 39) {
             game.move_right();
-        } else if (event.keyCode === 83) {
+        } else if (event.keyCode === 40) {
             game.move_down();
+        } else if (event.keyCode === 38) {
+            game.drop();
         }
         last = Date.now();
     }

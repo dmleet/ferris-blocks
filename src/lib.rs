@@ -84,15 +84,15 @@ impl Block {
                     Coord::new(0, 1),
                 ],
                 BlockStyle::J => [
-                    Coord::new(0, -2),
                     Coord::new(0, -1),
                     Coord::new(0, 0),
-                    Coord::new(-1, 0),
+                    Coord::new(0, 1),
+                    Coord::new(-1, 1),
                 ],
                 BlockStyle::L => [
-                    Coord::new(0, -2),
                     Coord::new(0, -1),
                     Coord::new(0, 0),
+                    Coord::new(0, 1),
                     Coord::new(1, 0),
                 ],
                 BlockStyle::O => [
@@ -189,7 +189,7 @@ impl Board {
 }
 
 impl Board {
-    fn fill_block(&mut self) {
+    fn update(&mut self) {
         for coord in self.block.coords.iter() {
             let x = (coord.x + self.pos.x) as usize;
             let y = (coord.y + self.pos.y) as usize;
@@ -299,9 +299,10 @@ impl Game {
 #[wasm_bindgen]
 impl Game {
     pub fn tick(&mut self) {
+
         let new_pos = Coord::new(self.board.pos.x, self.board.pos.y + 1);
         if self.board.check_collision(new_pos.clone(), self.board.block.coords) {
-            self.board.fill_block();
+            self.board.update();
             self.board.pos = Coord::new((self.board.cols / 2) as i32, 0);
             self.board.block = Block::next();
         } else {
@@ -331,13 +332,15 @@ impl Game {
         }
     }
 
-    pub fn move_down(&mut self) {
+    pub fn move_down(&mut self) -> bool {
         let new_pos = Coord::new(self.board.pos.x, self.board.pos.y + 1);
         if !self.board.check_collision(new_pos.clone(), self.board.block.coords)
         {
             self.board.pos = new_pos;
             self.draw();
+            return true;
         }
+        false
     }
 
     pub fn rotate(&mut self) {
@@ -351,6 +354,10 @@ impl Game {
             self.board.block.coords = new_coords;
             self.draw();
         }
+    }
+
+    pub fn drop(&mut self) {
+        while self.move_down() {}
     }
 }
 
