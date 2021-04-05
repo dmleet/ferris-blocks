@@ -37,10 +37,18 @@ pub enum BlockStyle {
 }
 use self::BlockStyle::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Coord {
     x: usize,
     y: usize,
+}
+
+impl std::ops::Add<Coord> for Coord {
+    type Output = Coord;
+
+    fn add(self, _rhs: Coord) -> Coord {
+        Coord::new(self.x + _rhs.x, self.y + _rhs.y)
+    }
 }
 
 impl Coord {
@@ -53,8 +61,8 @@ type BlockCoords = [Coord; 4];
 #[derive(Debug, Clone)]
 pub struct Block {
     style: BlockStyle,
-    coords: BlockCoords,
     color: JsValue,
+    coords: BlockCoords,
 }
 
 impl Block {
@@ -115,26 +123,27 @@ impl Block {
     }
 }
 
-/*impl Block {
-    pub fn draw(&mut self, context: &CanvasRenderingContext2d) {
-        for coord in self.board.block.coords.iter() {
-            context.set_fill_style(&self.board.block.color);
+impl Block {
+    pub fn draw(&mut self, context: &CanvasRenderingContext2d, pos: Coord, cell_size_px: usize) {
+        for coord in self.coords.iter() {
+            let abs_coords = pos + coord.clone();
+            context.set_fill_style(&self.color);
             context.fill_rect(
-                ((self.board.pos.x + coord.x) * self.board.cell_size_px) as f64,
-                ((self.board.pos.y + coord.y) * self.board.cell_size_px) as f64,
-                self.board.cell_size_px as f64,
-                self.board.cell_size_px as f64,
+                (abs_coords.x * cell_size_px) as f64,
+                (abs_coords.y * cell_size_px) as f64,
+                cell_size_px as f64,
+                cell_size_px as f64,
             );
-            context.set_stroke_style(border);
+            context.set_stroke_style(&JsValue::from_str("black"));
             context.stroke_rect(
-                ((self.board.pos.x + coord.x) * self.board.cell_size_px) as f64,
-                ((self.board.pos.y + coord.y) * self.board.cell_size_px) as f64,
-                self.board.cell_size_px as f64,
-                self.board.cell_size_px as f64,
+                (abs_coords.x * cell_size_px) as f64,
+                (abs_coords.y * cell_size_px) as f64,
+                cell_size_px as f64,
+                cell_size_px as f64,
             );
         }
     }
-}*/
+}
 
 #[derive(Debug, Clone)]
 pub struct Board {
@@ -233,26 +242,20 @@ impl Game {
                     self.board.cell_size_px as f64,
                     self.board.cell_size_px as f64,
                 );
+
+                if self.board.cells[row][col] == Cell::Filled {
+                    self.context.set_stroke_style(border);
+                    self.context.stroke_rect(
+                        (col * self.board.cell_size_px) as f64,
+                        (row * self.board.cell_size_px) as f64,
+                        self.board.cell_size_px as f64,
+                        self.board.cell_size_px as f64);
+                }
             }
         }
 
         // Active Block
-        for coord in self.board.block.coords.iter() {
-            self.context.set_fill_style(&self.board.block.color);
-            self.context.fill_rect(
-                ((self.board.pos.x + coord.x) * self.board.cell_size_px) as f64,
-                ((self.board.pos.y + coord.y) * self.board.cell_size_px) as f64,
-                self.board.cell_size_px as f64,
-                self.board.cell_size_px as f64,
-            );
-            self.context.set_stroke_style(border);
-            self.context.stroke_rect(
-                ((self.board.pos.x + coord.x) * self.board.cell_size_px) as f64,
-                ((self.board.pos.y + coord.y) * self.board.cell_size_px) as f64,
-                self.board.cell_size_px as f64,
-                self.board.cell_size_px as f64,
-            );
-        }
+        self.board.block.draw(&self.context, self.board.pos, self.board.cell_size_px);
 
         // Border
         self.context.set_stroke_style(border);
