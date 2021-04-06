@@ -111,6 +111,14 @@ impl Game {
             (self.board.cols * self.board.cell_size_px) as f64,
             (self.board.rows * self.board.cell_size_px) as f64,
         );
+
+        // Temp stats
+        let score_str = format!(
+            "Score: {:?} | Lines: {:?} | Lv: {:?} | x{:?}",
+            self.board.score, self.board.lines, self.board.level, self.board.combo
+        );
+        self.context.set_font("12px sans-serif");
+        self.context.fill_text(&score_str, 10.0, 10.0).unwrap();
     }
 }
 
@@ -125,6 +133,8 @@ impl Game {
             self.board.update();
             self.board.pos = Coord::new((self.board.cols / 2) as i32, 0);
             self.board.block = Block::next();
+            // TODO - something better
+            self.tick_delay = 400.0 - (self.board.level as f64) * 50.0;
         } else {
             self.board.pos = new_pos;
         }
@@ -139,14 +149,16 @@ impl Game {
         const KEY_LEFT: u32 = 37;
         const KEY_RIGHT: u32 = 39;
         const KEY_SPACE: u32 = 32;
-    
+
         match key {
             KEY_UP => self.drop(),
-            KEY_DOWN => { let _ = self.move_down(); },
+            KEY_DOWN => {
+                let _ = self.move_down();
+            }
             KEY_LEFT => self.move_left(),
             KEY_RIGHT => self.move_right(),
             KEY_SPACE => self.rotate(),
-            _ => ( /* do nothing for every other key */)
+            _ => ( /* do nothing for every other key */),
         };
     }
 
@@ -236,7 +248,7 @@ pub fn run(rc_game: Rc<RefCell<Game>>) -> Result<(), JsValue> {
     let g = f.clone();
     let window = window();
     let rc_game_clone = rc_game.clone();
-    
+
     let mut last_tick = Date::now();
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
         if Date::now() - last_tick > rc_game.borrow().tick_delay {

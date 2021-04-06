@@ -17,7 +17,9 @@ pub struct Board {
     pub cells: Vec<Vec<Cell>>,
     pub block: Block,
     pub pos: Coord,
+    pub lines: u32,
     pub score: u32,
+    pub combo: u32,
     pub level: u32,
 }
 
@@ -30,8 +32,10 @@ impl Board {
             cells: vec![vec![Cell::Empty; cols]; rows],
             block: Block::next(),
             pos: Coord::new((cols / 2) as i32, 0),
+            lines: 0,
             score: 0,
-            level: 0,
+            combo: 1,
+            level: 1,
         }
     }
 }
@@ -71,13 +75,18 @@ impl Board {
             self.cells = new_cells;
 
             // Adjust score and level
+            self.lines += new_row_count as u32;
             self.score += match new_row_count {
                 1 => 100,
                 2 => 250,
                 3 => 500,
                 4 => 1000,
                 _ => panic!("How can you have any pudding if you don't eat yer meat!?")
-            };
+            } * self.combo;
+            self.combo += new_row_count as u32;
+            self.level = self.lines / 10;
+        } else {
+            self.combo = 1;
         }
     }
 }
