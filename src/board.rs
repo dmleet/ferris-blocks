@@ -54,9 +54,11 @@ impl Board {
 impl Board {
     pub fn update(&mut self) {
         for coord in self.block.coords.iter() {
-            let x = (coord.x + self.pos.x) as usize;
-            let y = (coord.y + self.pos.y) as usize;
-            self.cells[y][x] = Cell::Filled; // TODO - Array OOB when the block reach the top!!!!!
+            let abs_x = (coord.x + self.pos.x) as usize;
+            let abs_y = (coord.y + self.pos.y) as usize;
+            if abs_x < self.cols && abs_y < self.rows {
+                self.cells[abs_y][abs_x] = Cell::Filled;
+            }
         }
 
         // Pop empty rows
