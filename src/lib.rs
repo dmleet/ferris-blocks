@@ -1,17 +1,20 @@
 extern crate js_sys;
+extern crate web_sys;
 
-mod utils;
-mod coord;
 mod block;
 mod board;
+mod coord;
+mod utils;
 
-use coord::Coord;
 use block::*;
 use board::*;
+use coord::Coord;
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, KeyboardEvent};
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -29,10 +32,16 @@ extern "C" {
 pub struct Game {
     board: Board,
     context: CanvasRenderingContext2d,
+    tick_delay: f64,
 }
 
 impl Game {
-    pub fn make(canvas: &HtmlCanvasElement, rows: usize, cols: usize, cell_size_px: usize) -> Game {
+    pub fn make(
+        canvas: &HtmlCanvasElement,
+        rows: usize,
+        cols: usize,
+        cell_size_px: usize,
+    ) -> Rc<RefCell<Game>> {
         let context = canvas
             .get_context("2d")
             .unwrap()
@@ -44,13 +53,15 @@ impl Game {
         canvas.set_width((cols * cell_size_px) as u32);
         canvas.set_height((rows * cell_size_px) as u32);
 
-        let game = Game {
+        let rc_game = Rc::new(RefCell::new(Game {
             board: Board::new(rows, cols, cell_size_px),
             context,
-        };
+            tick_delay: 400.0,
+        }));
 
-        game.clone().draw();
-        game
+        run(rc_game.clone()).expect("Somebody set us up the bomb!");
+        rc_game.borrow_mut().draw();
+        rc_game
     }
 }
 
@@ -88,7 +99,9 @@ impl Game {
         }
 
         // Active Block
-        self.board.block.draw(&self.context, self.board.pos, self.board.cell_size_px);
+        self.board
+            .block
+            .draw(&self.context, self.board.pos, self.board.cell_size_px);
 
         // Border
         self.context.set_stroke_style(border);
@@ -104,9 +117,11 @@ impl Game {
 #[wasm_bindgen]
 impl Game {
     pub fn tick(&mut self) {
-
         let new_pos = Coord::new(self.board.pos.x, self.board.pos.y + 1);
-        if self.board.check_collision(new_pos.clone(), self.board.block.coords) {
+        if self
+            .board
+            .check_collision(new_pos.clone(), self.board.block.coords)
+        {
             self.board.update();
             self.board.pos = Coord::new((self.board.cols / 2) as i32, 0);
             self.board.block = Block::next();
@@ -117,11 +132,29 @@ impl Game {
     }
 }
 
-#[wasm_bindgen]
 impl Game {
+    pub fn on_key(&mut self, key: u32) {
+        const KEY_UP: u32 = 38;
+        const KEY_DOWN: u32 = 40;
+        const KEY_LEFT: u32 = 37;
+        const KEY_RIGHT: u32 = 39;
+        const KEY_SPACE: u32 = 32;
+    
+        match key {
+            KEY_UP => self.drop(),
+            KEY_DOWN => { let _ = self.move_down(); },
+            KEY_LEFT => self.move_left(),
+            KEY_RIGHT => self.move_right(),
+            KEY_SPACE => self.rotate(),
+            _ => ( /* do nothing for every other key */)
+        };
+    }
+
     pub fn move_left(&mut self) {
         let new_pos = Coord::new(self.board.pos.x - 1, self.board.pos.y);
-        if !self.board.check_collision(new_pos.clone(), self.board.block.coords)
+        if !self
+            .board
+            .check_collision(new_pos.clone(), self.board.block.coords)
         {
             self.board.pos = new_pos;
             self.draw();
@@ -130,7 +163,9 @@ impl Game {
 
     pub fn move_right(&mut self) {
         let new_pos = Coord::new(self.board.pos.x + 1, self.board.pos.y);
-        if !self.board.check_collision(new_pos.clone(), self.board.block.coords)
+        if !self
+            .board
+            .check_collision(new_pos.clone(), self.board.block.coords)
         {
             self.board.pos = new_pos;
             self.draw();
@@ -139,7 +174,9 @@ impl Game {
 
     pub fn move_down(&mut self) -> bool {
         let new_pos = Coord::new(self.board.pos.x, self.board.pos.y + 1);
-        if !self.board.check_collision(new_pos.clone(), self.board.block.coords)
+        if !self
+            .board
+            .check_collision(new_pos.clone(), self.board.block.coords)
         {
             self.board.pos = new_pos;
             self.draw();
@@ -167,15 +204,55 @@ impl Game {
 }
 
 #[wasm_bindgen]
-pub fn make() -> Game {
+pub fn make() -> HtmlCanvasElement {
     utils::set_panic_hook();
-    let window = web_sys::window().expect("no global `window` exists");
-    let document = window.document().expect("should have a document on window");
-    let canvas = document
-        .get_element_by_id("ferris-blocks-canvas")
+
+    let canvas = window()
+        .document()
+        .unwrap()
+        .create_element("canvas")
         .unwrap()
         .dyn_into::<HtmlCanvasElement>()
         .unwrap();
 
-    Game::make(&canvas, 20, 10, 20)
+    Game::make(&canvas, 20, 10, 20);
+    canvas
+}
+
+fn window() -> web_sys::Window {
+    web_sys::window().expect("no global `window` exists")
+}
+
+fn request_animation_frame(f: &Closure<dyn FnMut()>) {
+    window()
+        .request_animation_frame(f.as_ref().unchecked_ref())
+        .expect("should register `requestAnimationFrame` OK");
+}
+
+use js_sys::Date;
+// https://rustwasm.github.io/docs/wasm-bindgen/examples/request-animation-frame.html
+pub fn run(rc_game: Rc<RefCell<Game>>) -> Result<(), JsValue> {
+    let f = Rc::new(RefCell::new(None));
+    let g = f.clone();
+    let window = window();
+    let rc_game_clone = rc_game.clone();
+    
+    let mut last_tick = Date::now();
+    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+        if Date::now() - last_tick > rc_game.borrow().tick_delay {
+            rc_game.borrow_mut().tick();
+            last_tick = Date::now();
+        }
+        request_animation_frame(f.borrow().as_ref().unwrap());
+    }) as Box<dyn FnMut()>));
+    request_animation_frame(g.borrow().as_ref().unwrap());
+
+    let onkeydown_handler = Closure::wrap(Box::new(move |event: KeyboardEvent| {
+        let mut game = rc_game_clone.borrow_mut();
+        game.on_key(event.key_code());
+    }) as Box<dyn FnMut(KeyboardEvent)>);
+    window.set_onkeydown(Some(onkeydown_handler.as_ref().unchecked_ref()));
+    onkeydown_handler.forget();
+
+    Ok(())
 }

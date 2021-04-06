@@ -56,7 +56,7 @@ impl Board {
         for coord in self.block.coords.iter() {
             let x = (coord.x + self.pos.x) as usize;
             let y = (coord.y + self.pos.y) as usize;
-            self.cells[y][x] = Cell::Filled;
+            self.cells[y][x] = Cell::Filled; // TODO - Array OOB when the block reach the top!!!!!
         }
 
         // Pop empty rows

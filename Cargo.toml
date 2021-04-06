@@ -41,6 +41,7 @@ features = [
   'HtmlCanvasElement',
   'FocusEvent',
   'KeyboardEvent',
+  'MouseEvent',
   'EventListener',
   'EventTarget',
   'UiEvent'
