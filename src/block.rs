@@ -3,7 +3,7 @@ use crate::JsValue;
 use crate::CanvasRenderingContext2d;
 use crate::js_sys;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BlockStyle {
     I,
     J,
@@ -13,7 +13,6 @@ pub enum BlockStyle {
     T,
     Z,
 }
-use self::BlockStyle::*;
 
 pub type BlockCoords = [Coord; 4];
 
@@ -24,6 +23,7 @@ pub struct Block {
     pub coords: BlockCoords,
 }
 
+use self::BlockStyle::*;
 impl Block {
     // unsafe for now, caused by the shit js_sys methods
     // next block style will come from the server

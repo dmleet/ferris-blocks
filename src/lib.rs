@@ -33,6 +33,7 @@ pub struct Game {
     board: Board,
     context: CanvasRenderingContext2d,
     tick_delay: f64,
+    cooldown: f64, // Some moves provide a cooldown, during which the current block will not be copied to the board cells
 }
 
 impl Game {
@@ -49,7 +50,6 @@ impl Game {
             .dyn_into::<CanvasRenderingContext2d>()
             .unwrap();
 
-        // TODO - should I do something about 'usize as u32'?
         canvas.set_width((cols * cell_size_px) as u32);
         canvas.set_height((rows * cell_size_px) as u32);
 
@@ -57,6 +57,7 @@ impl Game {
             board: Board::new(rows, cols, cell_size_px),
             context,
             tick_delay: 400.0,
+            cooldown: 0.0,
         }));
 
         run(rc_game.clone()).expect("Somebody set us up the bomb!");
@@ -114,31 +115,58 @@ impl Game {
 
         // Temp stats
         let score_str = format!(
-            "Score: {:?} | Lines: {:?} | Lv: {:?} | x{:?}",
-            self.board.score, self.board.lines, self.board.level, self.board.combo
+            "Score: {:?} | Lines: {:?} | Lv: {:?} | x{:?} | Next: {:?}",
+            self.board.score, self.board.lines, self.board.level, self.board.combo, self.board.next_block.style
         );
         self.context.set_font("12px sans-serif");
         self.context.fill_text(&score_str, 10.0, 10.0).unwrap();
     }
 }
 
+impl Game {
+    pub fn get_tick_time(&self) -> f64 {
+        650.0 - (self.board.level as f64) * 50.0
+    }
+
+    pub fn reset_tick_time(&mut self) {
+        self.tick_delay += self.get_tick_time();
+    }
+
+    pub fn set_cooldown(&mut self, cd_time: f64) {
+        if cd_time > self.cooldown {
+            self.cooldown = cd_time;
+        }
+    }
+}
+
 #[wasm_bindgen]
 impl Game {
-    pub fn tick(&mut self) {
-        let new_pos = Coord::new(self.board.pos.x, self.board.pos.y + 1);
-        if self
-            .board
-            .check_collision(new_pos.clone(), self.board.block.coords)
-        {
-            self.board.update();
-            self.board.pos = Coord::new((self.board.cols / 2) as i32, 0);
-            self.board.block = Block::next();
-            // TODO - something better
-            self.tick_delay = 400.0 - (self.board.level as f64) * 50.0;
-        } else {
-            self.board.pos = new_pos;
+    pub fn update(&mut self, delta_t: f64) {
+        self.tick_delay -= delta_t;
+        if self.cooldown > 0.0 {
+            self.cooldown -= delta_t;
         }
-        self.draw();
+        
+        if self.tick_delay < 0.0 {
+            let new_pos = Coord::new(self.board.pos.x, self.board.pos.y + 1);
+            if self
+                .board
+                .check_collision(new_pos.clone(), self.board.block.coords)
+            {
+                if self.cooldown > 0.0 {
+                    self.tick_delay = self.cooldown;
+                } else {
+                    self.board.update();
+                    self.board.pos = Coord::new((self.board.cols / 2) as i32, 0);
+                    self.board.block = self.board.next_block.clone();
+                    self.board.next_block = Block::next();
+                }
+            } else {
+                self.board.pos = new_pos;
+            }
+            self.draw();
+            self.reset_tick_time();
+        }
     }
 }
 
@@ -163,6 +191,7 @@ impl Game {
     }
 
     pub fn move_left(&mut self) {
+        self.set_cooldown(250.0);
         let new_pos = Coord::new(self.board.pos.x - 1, self.board.pos.y);
         if !self
             .board
@@ -174,6 +203,7 @@ impl Game {
     }
 
     pub fn move_right(&mut self) {
+        self.set_cooldown(250.0);
         let new_pos = Coord::new(self.board.pos.x + 1, self.board.pos.y);
         if !self
             .board
@@ -198,6 +228,10 @@ impl Game {
     }
 
     pub fn rotate(&mut self) {
+        self.set_cooldown(400.0);
+        if self.board.block.style == BlockStyle::O {
+            return;
+        }
         let mut new_coords = self.board.block.coords;
         for coord in new_coords.iter_mut() {
             let new_y = -coord.x;
@@ -207,6 +241,18 @@ impl Game {
         if !self.board.check_collision(self.board.pos, new_coords) {
             self.board.block.coords = new_coords;
             self.draw();
+        } else {
+            // Find the closest, adjacent place to put the rotated block (if possible)
+            for j in (-1..0).rev() {
+                for i in -1..2 {
+                    let new_pos = Coord::new(self.board.pos.x + i as i32, self.board.pos.y + j);
+                    if !self.board.check_collision(new_pos, new_coords) {
+                        self.board.pos = new_pos;
+                        self.rotate();
+                        return;
+                    }
+                }
+            }
         }
     }
 
@@ -227,7 +273,7 @@ pub fn make() -> HtmlCanvasElement {
         .dyn_into::<HtmlCanvasElement>()
         .unwrap();
 
-    Game::make(&canvas, 20, 10, 20);
+    Game::make(&canvas, 20, 10, 25);
     canvas
 }
 
@@ -243,18 +289,18 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
 
 use js_sys::Date;
 // https://rustwasm.github.io/docs/wasm-bindgen/examples/request-animation-frame.html
+// I hate this. Send help.
 pub fn run(rc_game: Rc<RefCell<Game>>) -> Result<(), JsValue> {
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
     let window = window();
     let rc_game_clone = rc_game.clone();
 
-    let mut last_tick = Date::now();
+    let mut last_frame = Date::now();
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-        if Date::now() - last_tick > rc_game.borrow().tick_delay {
-            rc_game.borrow_mut().tick();
-            last_tick = Date::now();
-        }
+        rc_game.borrow_mut().update(Date::now() - last_frame);
+        last_frame = Date::now();
+        //rc_game.borrow_mut().draw();
         request_animation_frame(f.borrow().as_ref().unwrap());
     }) as Box<dyn FnMut()>));
     request_animation_frame(g.borrow().as_ref().unwrap());
